@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>ReceiptVault</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <button class="icon-btn" id="menuBtn" aria-label="Menu">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="header-center">
+        <h1 class="app-title">
+          <svg class="logo-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+          ReceiptVault
+        </h1>
+      </div>
+      <div class="header-right">
+        <button class="icon-btn" id="searchToggle" aria-label="Search">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Search Bar (hidden by default) -->
+    <div class="search-bar hidden" id="searchBar">
+      <input type="text" id="searchInput" placeholder="Search receipts..." autocomplete="off">
+    </div>
+
+    <!-- Stats Banner -->
+    <div class="stats-banner">
+      <div class="stat">
+        <span class="stat-value" id="totalReceipts">0</span>
+        <span class="stat-label">Receipts</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="totalSpent">$0</span>
+        <span class="stat-label">This Month</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="topCategory">—</span>
+        <span class="stat-label">Top Category</span>
+      </div>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div class="filter-tabs">
+      <button class="filter-tab active" data-filter="all">All</button>
+      <button class="filter-tab" data-filter="groceries">Groceries</button>
+      <button class="filter-tab" data-filter="dining">Dining</button>
+      <button class="filter-tab" data-filter="shopping">Shopping</button>
+      <button class="filter-tab" data-filter="services">Services</button>
+      <button class="filter-tab" data-filter="travel">Travel</button>
+      <button class="filter-tab" data-filter="health">Health</button>
+      <button class="filter-tab" data-filter="other">Other</button>
+    </div>
+
+    <!-- Receipt List -->
+    <div class="receipt-list" id="receiptList">
+      <!-- Receipts rendered here by JS -->
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state hidden" id="emptyState">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.4"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+      <p>No receipts yet</p>
+      <p class="sub">Tap + to add your first receipt</p>
+    </div>
+
+    <!-- FAB (Add Receipt) -->
+    <button class="fab" id="addBtn" aria-label="Add receipt">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+
+    <!-- Add Receipt Modal -->
+    <div class="modal-overlay hidden" id="addModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Add Receipt</h2>
+          <button class="icon-btn close-btn" id="closeAddModal" aria-label="Close">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <!-- Source Selection -->
+        <div class="source-options" id="sourceOptions">
+          <button class="source-btn" data-source="manual">
+            <div class="source-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </div>
+            <span>Manual Entry</span>
+          </button>
+          <button class="source-btn" data-source="camera">
+            <div class="source-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </div>
+            <span>Scan Receipt</span>
+          </button>
+          <button class="source-btn" data-source="email">
+            <div class="source-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </div>
+            <span>From Email</span>
+          </button>
+          <button class="source-btn" data-source="photo">
+            <div class="source-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            </div>
+            <span>Photo Library</span>
+          </button>
+        </div>
+
+        <!-- Manual Entry Form -->
+        <form class="receipt-form hidden" id="receiptForm">
+          <div class="form-group">
+            <label for="storeName">Store / Merchant</label>
+            <input type="text" id="storeName" placeholder="e.g. Target, Whole Foods" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="amount">Amount</label>
+              <input type="number" id="amount" step="0.01" min="0" placeholder="0.00" required>
+            </div>
+            <div class="form-group">
+              <label for="date">Date</label>
+              <input type="date" id="date" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="category">Category</label>
+            <select id="category">
+              <option value="groceries">Groceries</option>
+              <option value="dining">Dining</option>
+              <option value="shopping">Shopping</option>
+              <option value="services">Services</option>
+              <option value="travel">Travel</option>
+              <option value="health">Health</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="notes">Notes (optional)</label>
+            <textarea id="notes" rows="2" placeholder="Payment method, items purchased..."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="imageUpload" class="upload-label">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Attach Photo
+            </label>
+            <input type="file" id="imageUpload" accept="image/*" class="hidden-input">
+            <div class="image-preview hidden" id="imagePreview">
+              <img id="previewImg" alt="Receipt preview">
+              <button type="button" class="remove-img" id="removeImg">&times;</button>
+            </div>
+          </div>
+          <button type="submit" class="btn-primary">Save Receipt</button>
+        </form>
+
+        <!-- Scan / Email / Photo placeholders -->
+        <div class="placeholder-view hidden" id="scanView">
+          <div class="scan-area">
+            <div class="scan-frame"></div>
+            <p>Camera access would go here</p>
+            <p class="sub">In production, this uses the device camera + OCR to auto-extract receipt details</p>
+          </div>
+          <button class="btn-secondary back-btn" id="backFromScan">Back</button>
+        </div>
+        <div class="placeholder-view hidden" id="emailView">
+          <div class="email-connect">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <p>Connect your email to auto-import receipts</p>
+            <p class="sub">Supports Gmail, Outlook, Yahoo</p>
+            <button class="btn-primary" style="margin-top:16px" disabled>Connect Email (Coming Soon)</button>
+          </div>
+          <button class="btn-secondary back-btn" id="backFromEmail">Back</button>
+        </div>
+        <div class="placeholder-view hidden" id="photoView">
+          <div class="email-connect">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <p>Select receipt photos from your library</p>
+            <p class="sub">AI will extract merchant, date, and amount automatically</p>
+            <button class="btn-primary" style="margin-top:16px" disabled>Open Photo Library (Coming Soon)</button>
+          </div>
+          <button class="btn-secondary back-btn" id="backFromPhoto">Back</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Receipt Detail Modal -->
+    <div class="modal-overlay hidden" id="detailModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="detailStore">Store Name</h2>
+          <button class="icon-btn close-btn" id="closeDetailModal" aria-label="Close">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="detail-content">
+          <div class="detail-amount" id="detailAmount">$0.00</div>
+          <div class="detail-meta">
+            <span class="detail-date" id="detailDate"></span>
+            <span class="detail-category badge" id="detailCategory"></span>
+          </div>
+          <div class="detail-notes" id="detailNotes"></div>
+          <div class="detail-image hidden" id="detailImage">
+            <img id="detailImg" alt="Receipt photo">
+          </div>
+          <div class="detail-actions">
+            <button class="btn-secondary btn-danger" id="deleteReceipt">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Side Menu -->
+    <div class="menu-overlay hidden" id="menuOverlay">
+      <nav class="side-menu">
+        <div class="menu-header">
+          <h2>ReceiptVault</h2>
+          <p class="sub">Your receipts, organized</p>
+        </div>
+        <ul class="menu-list">
+          <li class="menu-item active">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+            All Receipts
+          </li>
+          <li class="menu-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+            Spending Insights
+          </li>
+          <li class="menu-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export
+          </li>
+          <li class="menu-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+            Settings
+          </li>
+        </ul>
+        <div class="menu-footer">
+          <p class="sub">v1.0 Prototype</p>
+        </div>
+      </nav>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
