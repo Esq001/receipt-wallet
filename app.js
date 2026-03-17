@@ -158,6 +158,7 @@ signInForm.addEventListener('submit', async (e) => {
       await auth.signInWithEmailAndPassword(email, password);
     }
   } catch (err) {
+    console.error('Auth error:', err.code, err.message);
     authError.textContent = getAuthErrorMessage(err.code);
     authError.classList.remove('hidden');
     authSubmitBtn.disabled = false;
@@ -421,6 +422,11 @@ function resetAddModal() {
   $('#receiptForm').reset();
   $('#imagePreview').classList.add('hidden');
   $('#date').value = formatDateISO(new Date());
+  // Reset email scanner steps
+  $('#emailConnectStep').classList.remove('hidden');
+  $('#emailScanningStep').classList.add('hidden');
+  $('#emailResultsStep').classList.add('hidden');
+  $('#emailNoResults').classList.add('hidden');
 }
 
 // Source selection
@@ -498,3 +504,266 @@ $('#addModal').addEventListener('click', (e) => {
 $('#detailModal').addEventListener('click', (e) => {
   if (e.target === $('#detailModal')) $('#detailModal').classList.add('hidden');
 });
+
+// ========== Gmail Receipt Scanner ==========
+const GMAIL_CLIENT_ID = '217387923666-tlktffajr85e87auddssv766qrj282o6.apps.googleusercontent.com';
+const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.readonly';
+
+let gmailAccessToken = null;
+let foundEmailReceipts = [];
+
+// Known receipt senders and their categories
+const RECEIPT_SENDERS = {
+  'amazon': { name: 'Amazon', category: 'shopping' },
+  'target': { name: 'Target', category: 'shopping' },
+  'walmart': { name: 'Walmart', category: 'shopping' },
+  'costco': { name: 'Costco', category: 'shopping' },
+  'bestbuy': { name: 'Best Buy', category: 'shopping' },
+  'apple': { name: 'Apple', category: 'shopping' },
+  'uber': { name: 'Uber', category: 'travel' },
+  'lyft': { name: 'Lyft', category: 'travel' },
+  'doordash': { name: 'DoorDash', category: 'dining' },
+  'grubhub': { name: 'Grubhub', category: 'dining' },
+  'ubereats': { name: 'Uber Eats', category: 'dining' },
+  'instacart': { name: 'Instacart', category: 'groceries' },
+  'netflix': { name: 'Netflix', category: 'services' },
+  'spotify': { name: 'Spotify', category: 'services' },
+  'hulu': { name: 'Hulu', category: 'services' },
+  'venmo': { name: 'Venmo', category: 'other' },
+  'paypal': { name: 'PayPal', category: 'other' },
+  'square': { name: 'Square', category: 'other' },
+  'starbucks': { name: 'Starbucks', category: 'dining' },
+  'chipotle': { name: 'Chipotle', category: 'dining' },
+  'cvs': { name: 'CVS', category: 'health' },
+  'walgreens': { name: 'Walgreens', category: 'health' },
+  'homedepot': { name: 'Home Depot', category: 'other' },
+  'lowes': { name: "Lowe's", category: 'other' },
+};
+
+$('#connectGmailBtn').addEventListener('click', () => {
+  if (!GMAIL_CLIENT_ID) {
+    alert('Gmail OAuth Client ID not configured yet. See setup instructions.');
+    return;
+  }
+  const tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GMAIL_CLIENT_ID,
+    scope: GMAIL_SCOPES,
+    callback: (response) => {
+      if (response.access_token) {
+        gmailAccessToken = response.access_token;
+        scanGmail();
+      }
+    },
+  });
+  tokenClient.requestAccessToken();
+});
+
+$('#retryScanBtn').addEventListener('click', () => {
+  if (gmailAccessToken) {
+    scanGmail();
+  } else {
+    $('#emailNoResults').classList.add('hidden');
+    $('#emailConnectStep').classList.remove('hidden');
+  }
+});
+
+async function scanGmail() {
+  // Show scanning state
+  $('#emailConnectStep').classList.add('hidden');
+  $('#emailNoResults').classList.add('hidden');
+  $('#emailResultsStep').classList.add('hidden');
+  $('#emailScanningStep').classList.remove('hidden');
+
+  foundEmailReceipts = [];
+
+  try {
+    // Search for receipt-like emails from the last 90 days
+    const query = 'subject:(receipt OR order OR confirmation OR invoice OR payment) newer_than:90d -is:draft';
+    $('#scanStatus').textContent = 'Searching for receipt emails...';
+
+    const searchRes = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=50`,
+      { headers: { Authorization: `Bearer ${gmailAccessToken}` } }
+    );
+
+    if (!searchRes.ok) throw new Error('Gmail API error');
+    const searchData = await searchRes.json();
+    const messages = searchData.messages || [];
+
+    if (messages.length === 0) {
+      showNoResults();
+      return;
+    }
+
+    $('#scanStatus').textContent = `Found ${messages.length} potential receipts, analyzing...`;
+
+    // Fetch message details (batch of first 20)
+    const toFetch = messages.slice(0, 20);
+    const details = await Promise.all(
+      toFetch.map(msg =>
+        fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+          { headers: { Authorization: `Bearer ${gmailAccessToken}` } }
+        ).then(r => r.json())
+      )
+    );
+
+    // Parse each email for receipt info
+    for (const msg of details) {
+      const parsed = parseEmailForReceipt(msg);
+      if (parsed) {
+        foundEmailReceipts.push(parsed);
+      }
+    }
+
+    if (foundEmailReceipts.length === 0) {
+      showNoResults();
+      return;
+    }
+
+    showEmailResults();
+  } catch (err) {
+    console.error('Gmail scan error:', err);
+    $('#scanStatus').textContent = 'Error scanning emails. Please try again.';
+    setTimeout(() => {
+      $('#emailScanningStep').classList.add('hidden');
+      $('#emailConnectStep').classList.remove('hidden');
+    }, 2000);
+  }
+}
+
+function parseEmailForReceipt(msg) {
+  const headers = {};
+  (msg.payload?.headers || []).forEach(h => {
+    headers[h.name.toLowerCase()] = h.value;
+  });
+
+  const from = (headers.from || '').toLowerCase();
+  const subject = headers.subject || '';
+  const dateStr = headers.date || '';
+
+  // Match sender to known merchants
+  let store = null;
+  let category = 'other';
+
+  for (const [key, info] of Object.entries(RECEIPT_SENDERS)) {
+    if (from.includes(key)) {
+      store = info.name;
+      category = info.category;
+      break;
+    }
+  }
+
+  // If no known sender, try to extract from the "From" name
+  if (!store) {
+    const fromMatch = headers.from?.match(/^"?([^"<]+)"?\s*</);
+    if (fromMatch) {
+      store = fromMatch[1].trim();
+    } else {
+      store = from.split('@')[0];
+    }
+    // Skip if it looks like a personal email
+    if (store.length < 2 || store.includes(' ')) {
+      // Keep it, might be a business name
+    }
+  }
+
+  // Try to extract amount from subject
+  const amountMatch = subject.match(/\$\s?([\d,]+\.?\d{0,2})/);
+  const amount = amountMatch ? parseFloat(amountMatch[1].replace(',', '')) : null;
+
+  // Parse date
+  let date;
+  try {
+    const d = new Date(dateStr);
+    date = d.toISOString().split('T')[0];
+  } catch {
+    date = formatDateISO(new Date());
+  }
+
+  // Skip if no useful data
+  if (!store) return null;
+
+  return {
+    id: 'email_' + msg.id,
+    store: store,
+    amount: amount || 0,
+    category: category,
+    date: date,
+    notes: 'Imported from email: ' + subject,
+    image: null,
+    selected: true,
+    emailId: msg.id,
+  };
+}
+
+function showNoResults() {
+  $('#emailScanningStep').classList.add('hidden');
+  $('#emailNoResults').classList.remove('hidden');
+}
+
+function showEmailResults() {
+  $('#emailScanningStep').classList.add('hidden');
+  $('#emailResultsStep').classList.remove('hidden');
+  $('#foundCount').textContent = foundEmailReceipts.length;
+
+  const list = $('#emailResultsList');
+  list.innerHTML = foundEmailReceipts.map((r, i) => `
+    <label class="email-result-item">
+      <input type="checkbox" data-index="${i}" ${r.selected ? 'checked' : ''}>
+      <div class="email-result-info">
+        <div class="email-result-store">${escapeHtml(r.store)}</div>
+        <div class="email-result-meta">${formatDate(r.date)} &middot; ${r.category}</div>
+      </div>
+      <div class="email-result-amount">${r.amount > 0 ? '$' + r.amount.toFixed(2) : '—'}</div>
+    </label>
+  `).join('');
+
+  // Toggle selection
+  list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const idx = parseInt(e.target.dataset.index);
+      foundEmailReceipts[idx].selected = e.target.checked;
+    });
+  });
+}
+
+$('#importAllBtn').addEventListener('click', () => {
+  foundEmailReceipts.forEach(r => r.selected = true);
+  importSelectedReceipts();
+});
+
+$('#importSelectedBtn').addEventListener('click', () => {
+  importSelectedReceipts();
+});
+
+function importSelectedReceipts() {
+  const toImport = foundEmailReceipts.filter(r => r.selected);
+  if (toImport.length === 0) {
+    alert('No receipts selected.');
+    return;
+  }
+
+  let imported = 0;
+  toImport.forEach(r => {
+    // Skip if already imported (by emailId)
+    const exists = receipts.some(existing => existing.notes && existing.notes.includes(r.emailId));
+    if (!exists) {
+      receipts.push({
+        id: generateId(),
+        store: r.store,
+        amount: r.amount,
+        date: r.date,
+        category: r.category,
+        notes: r.notes,
+        image: null,
+      });
+      imported++;
+    }
+  });
+
+  saveReceipts(receipts);
+  render();
+  $('#addModal').classList.add('hidden');
+  alert(`Imported ${imported} receipt${imported !== 1 ? 's' : ''}!`);
+}
