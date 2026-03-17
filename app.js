@@ -1,5 +1,16 @@
-// ========== Data Layer ==========
-const STORAGE_KEY = 'receiptvault_data';
+// ========== Firebase Init ==========
+const firebaseConfig = {
+  apiKey: "AIzaSyBFCptR8Q9b5xHAwX_OAEvRSSWgZS9GFTo",
+  authDomain: "erin-s-idea.firebaseapp.com",
+  projectId: "erin-s-idea",
+  storageBucket: "erin-s-idea.firebasestorage.app",
+  messagingSenderId: "217387923666",
+  appId: "1:217387923666:web:34ad751075521ab3d5150b"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+
+// ========== Constants ==========
 const CATEGORY_ICONS = {
   groceries: '\u{1F6D2}',
   dining: '\u{1F37D}\uFE0F',
@@ -10,14 +21,21 @@ const CATEGORY_ICONS = {
   other: '\u{1F4CB}'
 };
 
+// ========== Data Layer (scoped per user) ==========
+let currentUserId = null;
+
+function storageKey() {
+  return 'receiptvault_' + currentUserId;
+}
+
 function loadReceipts() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    return JSON.parse(localStorage.getItem(storageKey())) || [];
   } catch { return []; }
 }
 
-function saveReceipts(receipts) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(receipts));
+function saveReceipts(data) {
+  localStorage.setItem(storageKey(), JSON.stringify(data));
 }
 
 function generateId() {
@@ -25,17 +43,15 @@ function generateId() {
 }
 
 // ========== State ==========
-let receipts = loadReceipts();
+let receipts = [];
 let activeFilter = 'all';
 let searchQuery = '';
 let selectedReceiptId = null;
 
-// Seed demo data if empty
-if (receipts.length === 0) {
-  const today = new Date();
+function seedDemoData() {
   const demoData = [
     { store: 'Whole Foods Market', amount: 87.43, category: 'groceries', date: formatDateISO(daysAgo(0)), notes: 'Weekly grocery run. Paid with Apple Pay.' },
-    { store: 'Chipotle', amount: 14.25, category: 'dining', date: formatDateISO(daysAgo(1)), notes: 'Lunch — burrito bowl + guac' },
+    { store: 'Chipotle', amount: 14.25, category: 'dining', date: formatDateISO(daysAgo(1)), notes: 'Lunch \u2014 burrito bowl + guac' },
     { store: 'Amazon', amount: 34.99, category: 'shopping', date: formatDateISO(daysAgo(2)), notes: 'USB-C hub for laptop' },
     { store: 'Uber', amount: 22.50, category: 'travel', date: formatDateISO(daysAgo(3)), notes: 'Ride to airport' },
     { store: 'CVS Pharmacy', amount: 12.89, category: 'health', date: formatDateISO(daysAgo(3)), notes: 'Cold medicine, vitamin C' },
@@ -63,21 +79,145 @@ function formatDateISO(d) {
 
 // ========== DOM References ==========
 const $ = (sel) => document.querySelector(sel);
-const receiptList = $('#receiptList');
-const emptyState = $('#emptyState');
-const searchBar = $('#searchBar');
-const searchInput = $('#searchInput');
-const addModal = $('#addModal');
-const detailModal = $('#detailModal');
-const menuOverlay = $('#menuOverlay');
-const sourceOptions = $('#sourceOptions');
-const receiptForm = $('#receiptForm');
-const scanView = $('#scanView');
-const emailView = $('#emailView');
-const photoView = $('#photoView');
+const authScreen = $('#authScreen');
+const appEl = $('#app');
+
+// ========== Auth State ==========
+let isSignUp = false;
+
+auth.onAuthStateChanged((user) => {
+  if (user) {
+    currentUserId = user.uid;
+    receipts = loadReceipts();
+    if (receipts.length === 0) seedDemoData();
+    showApp(user);
+  } else {
+    currentUserId = null;
+    showAuth();
+  }
+});
+
+function showAuth() {
+  authScreen.classList.remove('hidden');
+  appEl.classList.add('hidden');
+}
+
+function showApp(user) {
+  authScreen.classList.add('hidden');
+  appEl.classList.remove('hidden');
+
+  // Set user initial in avatar
+  const email = user.email || '';
+  $('#userInitial').textContent = email.charAt(0).toUpperCase();
+  $('#menuUserEmail').textContent = email;
+
+  render();
+}
+
+// ========== Auth Form ==========
+const signInForm = $('#signInForm');
+const authEmail = $('#authEmail');
+const authPassword = $('#authPassword');
+const authError = $('#authError');
+const authSubmitBtn = $('#authSubmitBtn');
+const authToggleBtn = $('#authToggleBtn');
+const authToggleText = $('#authToggleText');
+const forgotPasswordBtn = $('#forgotPasswordBtn');
+
+authToggleBtn.addEventListener('click', () => {
+  isSignUp = !isSignUp;
+  if (isSignUp) {
+    authSubmitBtn.textContent = 'Create Account';
+    authToggleText.textContent = 'Already have an account?';
+    authToggleBtn.textContent = 'Sign In';
+    authPassword.autocomplete = 'new-password';
+  } else {
+    authSubmitBtn.textContent = 'Sign In';
+    authToggleText.textContent = "Don't have an account?";
+    authToggleBtn.textContent = 'Sign Up';
+    authPassword.autocomplete = 'current-password';
+  }
+  authError.classList.add('hidden');
+});
+
+signInForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = authEmail.value.trim();
+  const password = authPassword.value;
+
+  if (!email || !password) return;
+
+  authSubmitBtn.disabled = true;
+  authSubmitBtn.textContent = isSignUp ? 'Creating Account...' : 'Signing In...';
+  authError.classList.add('hidden');
+
+  try {
+    if (isSignUp) {
+      await auth.createUserWithEmailAndPassword(email, password);
+    } else {
+      await auth.signInWithEmailAndPassword(email, password);
+    }
+  } catch (err) {
+    authError.textContent = getAuthErrorMessage(err.code);
+    authError.classList.remove('hidden');
+    authSubmitBtn.disabled = false;
+    authSubmitBtn.textContent = isSignUp ? 'Create Account' : 'Sign In';
+  }
+});
+
+forgotPasswordBtn.addEventListener('click', async () => {
+  const email = authEmail.value.trim();
+  if (!email) {
+    authError.textContent = 'Enter your email above, then tap Forgot Password.';
+    authError.classList.remove('hidden');
+    return;
+  }
+  try {
+    await auth.sendPasswordResetEmail(email);
+    authError.textContent = 'Password reset email sent! Check your inbox.';
+    authError.classList.remove('hidden');
+    authError.style.background = '#e8f5e9';
+    authError.style.color = '#2e7d32';
+    setTimeout(() => {
+      authError.style.background = '';
+      authError.style.color = '';
+    }, 4000);
+  } catch (err) {
+    authError.textContent = getAuthErrorMessage(err.code);
+    authError.classList.remove('hidden');
+  }
+});
+
+function getAuthErrorMessage(code) {
+  const messages = {
+    'auth/email-already-in-use': 'An account with this email already exists.',
+    'auth/invalid-email': 'Please enter a valid email address.',
+    'auth/user-not-found': 'No account found with this email.',
+    'auth/wrong-password': 'Incorrect password. Try again.',
+    'auth/weak-password': 'Password must be at least 6 characters.',
+    'auth/too-many-requests': 'Too many attempts. Please try again later.',
+    'auth/invalid-credential': 'Invalid email or password. Try again.',
+    'auth/network-request-failed': 'Network error. Check your connection.',
+  };
+  return messages[code] || 'Something went wrong. Please try again.';
+}
+
+// Sign out
+$('#signOutBtn').addEventListener('click', () => {
+  auth.signOut();
+  $('#menuOverlay').classList.add('hidden');
+});
+
+// User avatar click — open menu
+$('#userAvatarBtn').addEventListener('click', () => {
+  $('#menuOverlay').classList.remove('hidden');
+});
 
 // ========== Render ==========
 function render() {
+  const receiptList = $('#receiptList');
+  const emptyState = $('#emptyState');
+
   let filtered = receipts;
 
   if (activeFilter !== 'all') {
@@ -157,10 +297,8 @@ function formatDate(dateStr) {
 }
 
 function updateStats() {
-  // Total receipts
   $('#totalReceipts').textContent = receipts.length;
 
-  // This month's spending
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthTotal = receipts
@@ -168,7 +306,6 @@ function updateStats() {
     .reduce((sum, r) => sum + Number(r.amount), 0);
   $('#totalSpent').textContent = '$' + monthTotal.toFixed(0);
 
-  // Top category
   if (receipts.length > 0) {
     const counts = {};
     receipts.forEach(r => { counts[r.category] = (counts[r.category] || 0) + 1; });
@@ -189,6 +326,8 @@ function escapeHtml(str) {
 
 // Search toggle
 $('#searchToggle').addEventListener('click', () => {
+  const searchBar = $('#searchBar');
+  const searchInput = $('#searchInput');
   searchBar.classList.toggle('hidden');
   if (!searchBar.classList.contains('hidden')) {
     searchInput.focus();
@@ -199,7 +338,7 @@ $('#searchToggle').addEventListener('click', () => {
   }
 });
 
-searchInput.addEventListener('input', (e) => {
+$('#searchInput').addEventListener('input', (e) => {
   searchQuery = e.target.value;
   render();
 });
@@ -215,11 +354,10 @@ document.querySelectorAll('.filter-tab').forEach(tab => {
 });
 
 // Receipt card click
-receiptList.addEventListener('click', (e) => {
+$('#receiptList').addEventListener('click', (e) => {
   const card = e.target.closest('.receipt-card');
   if (!card) return;
-  const id = card.dataset.id;
-  showDetail(id);
+  showDetail(card.dataset.id);
 });
 
 function showDetail(id) {
@@ -245,11 +383,11 @@ function showDetail(id) {
     imgContainer.classList.add('hidden');
   }
 
-  detailModal.classList.remove('hidden');
+  $('#detailModal').classList.remove('hidden');
 }
 
 $('#closeDetailModal').addEventListener('click', () => {
-  detailModal.classList.add('hidden');
+  $('#detailModal').classList.add('hidden');
   selectedReceiptId = null;
 });
 
@@ -258,7 +396,7 @@ $('#deleteReceipt').addEventListener('click', () => {
   if (confirm('Delete this receipt?')) {
     receipts = receipts.filter(r => r.id !== selectedReceiptId);
     saveReceipts(receipts);
-    detailModal.classList.add('hidden');
+    $('#detailModal').classList.add('hidden');
     selectedReceiptId = null;
     render();
   }
@@ -267,22 +405,21 @@ $('#deleteReceipt').addEventListener('click', () => {
 // Add modal
 $('#addBtn').addEventListener('click', () => {
   resetAddModal();
-  addModal.classList.remove('hidden');
+  $('#addModal').classList.remove('hidden');
 });
 
 $('#closeAddModal').addEventListener('click', () => {
-  addModal.classList.add('hidden');
+  $('#addModal').classList.add('hidden');
 });
 
 function resetAddModal() {
-  sourceOptions.classList.remove('hidden');
-  receiptForm.classList.add('hidden');
-  scanView.classList.add('hidden');
-  emailView.classList.add('hidden');
-  photoView.classList.add('hidden');
-  receiptForm.reset();
+  $('#sourceOptions').classList.remove('hidden');
+  $('#receiptForm').classList.add('hidden');
+  $('#scanView').classList.add('hidden');
+  $('#emailView').classList.add('hidden');
+  $('#photoView').classList.add('hidden');
+  $('#receiptForm').reset();
   $('#imagePreview').classList.add('hidden');
-  // Set default date to today
   $('#date').value = formatDateISO(new Date());
 }
 
@@ -290,15 +427,15 @@ function resetAddModal() {
 document.querySelectorAll('.source-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const source = btn.dataset.source;
-    sourceOptions.classList.add('hidden');
+    $('#sourceOptions').classList.add('hidden');
     if (source === 'manual') {
-      receiptForm.classList.remove('hidden');
+      $('#receiptForm').classList.remove('hidden');
     } else if (source === 'camera') {
-      scanView.classList.remove('hidden');
+      $('#scanView').classList.remove('hidden');
     } else if (source === 'email') {
-      emailView.classList.remove('hidden');
+      $('#emailView').classList.remove('hidden');
     } else if (source === 'photo') {
-      photoView.classList.remove('hidden');
+      $('#photoView').classList.remove('hidden');
     }
   });
 });
@@ -326,43 +463,38 @@ $('#removeImg').addEventListener('click', () => {
 });
 
 // Form submit
-receiptForm.addEventListener('submit', (e) => {
+$('#receiptForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const store = $('#storeName').value.trim();
   const amount = parseFloat($('#amount').value);
   const date = $('#date').value;
   const category = $('#category').value;
   const notes = $('#notes').value.trim();
-  const imgEl = $('#previewImg');
-  const image = $('#imagePreview').classList.contains('hidden') ? null : imgEl.src;
+  const image = $('#imagePreview').classList.contains('hidden') ? null : $('#previewImg').src;
 
   if (!store || isNaN(amount) || !date) return;
 
-  const receipt = { id: generateId(), store, amount, date, category, notes, image };
-  receipts.push(receipt);
+  receipts.push({ id: generateId(), store, amount, date, category, notes, image });
   saveReceipts(receipts);
-  addModal.classList.add('hidden');
+  $('#addModal').classList.add('hidden');
   render();
 });
 
 // Menu
 $('#menuBtn').addEventListener('click', () => {
-  menuOverlay.classList.remove('hidden');
+  $('#menuOverlay').classList.remove('hidden');
 });
 
-menuOverlay.addEventListener('click', (e) => {
-  if (e.target === menuOverlay) {
-    menuOverlay.classList.add('hidden');
+$('#menuOverlay').addEventListener('click', (e) => {
+  if (e.target === $('#menuOverlay')) {
+    $('#menuOverlay').classList.add('hidden');
   }
 });
 
 // Close modals on overlay click
-addModal.addEventListener('click', (e) => {
-  if (e.target === addModal) addModal.classList.add('hidden');
+$('#addModal').addEventListener('click', (e) => {
+  if (e.target === $('#addModal')) $('#addModal').classList.add('hidden');
 });
-detailModal.addEventListener('click', (e) => {
-  if (e.target === detailModal) detailModal.classList.add('hidden');
+$('#detailModal').addEventListener('click', (e) => {
+  if (e.target === $('#detailModal')) $('#detailModal').classList.add('hidden');
 });
-
-// ========== Init ==========
-render();
